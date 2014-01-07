@@ -219,7 +219,10 @@ public class ExampleAIClient implements BWAPIEventListener {
 		
 //		
 		for (Unit unit : bwapi.getMyUnits()) {
-			bwapi.drawCircle(unit.getX(), unit.getY(), 10, 1, true, false);
+			for (Unit enemyUnit : bwapi.getEnemyUnits()) {
+				bwapi.drawLine(unit.getX(), unit.getY(), enemyUnit.getX(), enemyUnit.getY(), 2, false);
+			}
+//			bwapi.drawCircle(unit.getX(), unit.getY(), 10, 1, true, false);
 		}
 //			double distanceToEnemy;
 //			double distanceToTarget = getDistanceToTarget(unit);

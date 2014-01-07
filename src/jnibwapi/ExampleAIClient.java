@@ -1,28 +1,29 @@
 package jnibwapi;
 
-import java.awt.print.Book;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import com.sun.org.glassfish.external.arc.Taxonomy;
-
-import jnibwapi.model.Unit;
-import jnibwapi.types.UnitType;
-import jnibwapi.types.UnitType.UnitTypes;
 import net.sourceforge.jFuzzyLogic.FIS;
-import net.sourceforge.jFuzzyLogic.rule.Variable;
+import jnibwapi.model.Unit;
+import jnibwapi.types.UnitType.UnitTypes;
+import jnibwapi.util.BWColor;
 
 public class ExampleAIClient implements BWAPIEventListener {
 	private JNIBWAPI bwapi;
 	private int[] spawnTile0 = {11, 32};
 	private int[] spawnTile1 = {48, 31};
+	private int[] spawn0 = {250, 1025};
+	private int[] spawn1 = {1665, 1025};
 	private Unit targetUnit;
 	private FIS fuzzy;
+	private FIS individual;
 	private int spawnCount = 2;
+	private int gameSpeed = 30;
+	private List<Unit> groupedUnits1 = new ArrayList<Unit>();
+	private List<Unit> groupedUnits2 = new ArrayList<Unit>();
+	private List<Integer> groupSize = new ArrayList<Integer>();
 	
 	public static void main(String[] args) {
 		new ExampleAIClient();
@@ -31,6 +32,34 @@ public class ExampleAIClient implements BWAPIEventListener {
 	public ExampleAIClient() {
 		bwapi = new JNIBWAPI(this);
 		bwapi.start();
+	}
+	
+	@Override
+	public void gameStarted() {
+		System.out.println("Game Started");
+		bwapi.enableUserInput();
+		bwapi.enablePerfectInformation();
+		bwapi.setGameSpeed(this.gameSpeed);
+		bwapi.loadMapData(true);
+		for (Unit unit : bwapi.getMyUnits()) {
+			if(unit.getTypeID() == UnitTypes.Terran_Bunker.getID())
+				targetUnit = unit;
+		}
+				
+		// Load from 'FCL' file
+        String fileName = "fuzzy/group.fcl";
+        fuzzy = FIS.load(fileName,true);
+        
+        fileName = "fuzzy/indi.fcl";
+        individual = FIS.load(fileName,true);
+        
+        // Error while loading?
+        if( fuzzy == null || individual == null) { 
+            System.err.println("Can't load file: '" + fileName + "'");
+            return;
+        }
+
+        
 	}
 	
 	public double getDistanceToTarget(Unit unit) {
@@ -60,7 +89,7 @@ public class ExampleAIClient implements BWAPIEventListener {
 		return units.get(closestIndex);
 	}
 	
-	public Unit getClosestUnitToTargetBySpawn(int spawnNumber) {
+	public Unit getClosestEnemyUnitToTargetBySpawn(int spawnNumber) {
 		List<Unit> units = new ArrayList<Unit>();
 		double distance = -1;
 		int closestIndex = -1;
@@ -80,6 +109,27 @@ public class ExampleAIClient implements BWAPIEventListener {
 		}
 		return units.get(closestIndex);
 		
+	}
+	
+	public Unit getClosestEnemyUnitBySpawn(Unit unit, int spawnNumber) {
+		List<Unit> units = new ArrayList<Unit>();
+		double distance = -1;
+		int closestIndex = -1;
+		int i = 0;
+
+		for(Unit enemyUnit : getEnemiesNearSpawn(spawnNumber)) {
+			units.add(unit);
+			double d = getDistanceToUnit(unit, enemyUnit);
+				
+			if(distance == -1)
+				distance = d;
+			if(d < distance) {
+				distance = d;
+				closestIndex = i;
+			}
+			i++;
+		}
+		return units.get(closestIndex);
 	}
 	
 	public Unit getClosestEnemyToTarget() {
@@ -129,122 +179,130 @@ public class ExampleAIClient implements BWAPIEventListener {
 		bwapi.attack(attacker.getID(), victim.getX(), victim.getY());
 	}
 	
+	public void attackSpawn(Unit attacker, int spawnNumber) {
+		if(spawnNumber == 0) {
+			bwapi.attack(attacker.getID(), this.spawn0[0], this.spawn0[1]);
+		} else if(spawnNumber == 1) {
+			bwapi.attack(attacker.getID(), this.spawn1[0], this.spawn1[1]);
+		}
+	}
+	
+	public void goToDefaultLocation(Unit unit, int spawnNumber) {
+		if(spawnNumber == 0) {
+			bwapi.move(unit.getID(), 863, 1025);
+		} else {
+			bwapi.move(unit.getID(), 1024, 1025);
+		}
+	}
+	
 	@Override
 	public void connected() {
 		bwapi.loadTypeData();
 		
 	}
 
-	@Override
-	public void gameStarted() {
-		System.out.println("Game Started");
-		bwapi.enableUserInput();
-		bwapi.enablePerfectInformation();
-		bwapi.setGameSpeed(30); // default SC value
-		bwapi.loadMapData(true);
-		for (Unit unit : bwapi.getMyUnits()) {
-			if(unit.getTypeID() == UnitTypes.Terran_Bunker.getID())
-				targetUnit = unit;
-		}
+	public void takeAction(Unit unit, int action, int spawnNumber) {
+
 		
-		// Load from 'FCL' file
-        String fileName = "fuzzy/group.fcl";
-        fuzzy = FIS.load(fileName,true);
-
-        // Error while loading?
-        if( fuzzy == null ) { 
-            System.err.println("Can't load file: '" + fileName + "'");
-            return;
-        }
-
-        
+		
+			if(action == 1) { // frontLines
+				Unit enemyUnit = this.getClosestEnemyUnitBySpawn(unit, spawnNumber);
+				bwapi.attack(unit.getID(), enemyUnit.getX(), enemyUnit.getY());		
+			} else if (action == 2) { // holdPosition
+				bwapi.attack(unit.getID(), unit.getX(), unit.getY());		
+			} else if (action == 3) { // keepBack
+				Unit enemy = this.getClosestEnemyUnitToTargetBySpawn(spawnNumber);
+				bwapi.attack(unit.getID(), enemy.getX(), enemy.getY());
+			} else if (action == 4) { // defend
+				bwapi.move(unit.getID(), targetUnit.getX(), targetUnit.getY());
+			}
+		
+	
 	}
+	
+	
 	
 	@Override
 	public void gameUpdate() {
 		
-			
+		int sumSize = 0;
 		
-		if((bwapi.getFrameCount() % 15) == 0) {
-			List<Integer> groupSize = new ArrayList<Integer>();
-			int sumSize = 0;
+		if(bwapi.getFrameCount() % 5 == 0) {
+			List<Integer> newSize = new ArrayList<Integer>();
 			for(int i = 0; i < spawnCount; i++) {
 				// calculate group size via fuzzy for each direction
-//				System.out.println("Near " + Integer.toString(i) + ": " + Integer.toString(getEnemiesNearSpawn(i).size()));
 				fuzzy.setVariable("enemyCount", getEnemiesNearSpawn(i).size());
-		        fuzzy.setVariable("distanceToTarget", getDistanceToTarget(getClosestUnitToTargetBySpawn(i)));
+		        fuzzy.setVariable("distanceToTarget", getDistanceToTarget(getClosestEnemyUnitToTargetBySpawn(i)));
 		        fuzzy.setVariable("targetHealth", targetUnit.getHitPoints());
 		        fuzzy.evaluate();
-		        groupSize.add(i, (int)fuzzy.getVariable("groupSize").getValue());
-		        sumSize += groupSize.get(i);
+		        
+		        newSize.add(i, (int)fuzzy.getVariable("groupSize").getValue());
+		        sumSize += newSize.get(i);
 			}
-//			System.out.println("0:" + Integer.toString(groupSize.get(0)));
-//			System.out.println("1:" + Integer.toString(groupSize.get(1)));
-				
-			// add units to groups based on its size
-			Map<Integer, List<Unit>> group = new HashMap<Integer, List<Unit>>();
-			for(int i = 0; i < spawnCount; i++) {
-				double percentage = (double)groupSize.get(i) / sumSize;
-
-				List<Unit> myUnits = bwapi.getMyUnits();
-				List<Unit> groupedUnits = new ArrayList<Unit>();
-				
-				int iterateTo = (int)(myUnits.size() * percentage);
-				System.out.println(Integer.toString(iterateTo));
-				for(int j = 0; j < iterateTo; j++) {
-					if(myUnits.get(0).getTypeID() == UnitTypes.Terran_Marine.getID()) {
-						groupedUnits.add(myUnits.get(0));
-						myUnits.remove(0);
-					} else {
-						myUnits.remove(0);
+			
+			if(newSize != groupSize) {
+				groupSize = newSize;
+				// add units to groups based on its size
+				// reset first
+				groupedUnits1.clear();
+				groupedUnits2.clear();
+				for(int i = 0; i < spawnCount; i++) {
+					double percentage = (double)groupSize.get(i) / sumSize;
+					List<Unit> myUnits = bwapi.getMyUnits();
+					int iterateTo = (int)(myUnits.size() * percentage);
+					int iterator = 0;
+					for (Unit unit : bwapi.getMyUnits()) {
+						if(iterator < iterateTo) {
+							if(unit.getTypeID() == UnitTypes.Terran_Marine.getID()
+									&& !groupedUnits1.contains(unit)
+									&& !groupedUnits2.contains(unit)) {
+								if(i == 0)
+									groupedUnits1.add(unit);
+								else
+									groupedUnits2.add(unit);
+								
+								iterator++;
+							}
+						} else {
+							break;
+						}
 					}
 				}
-				group.put(i, groupedUnits);
-				
 			}
-			
-			
-			// move groups to spawn points
-			for(int i = 0; i < spawnCount; i++) {
-				for(Unit unit : group.get(i)) {
-					bwapi.drawCircle(unit.getX(), unit.getY(), 10, 1, true, false);
-					bwapi.attack(unit.getID(), 1000, 300);
-				}
-			}
-			System.out.println("1:" + Integer.toString(group.get(1).size()));
 		}
 		
-		List<Unit> defenders = new ArrayList<Unit>();
-		
-		
-//		
-		for (Unit unit : bwapi.getMyUnits()) {
-			for (Unit enemyUnit : bwapi.getEnemyUnits()) {
-				bwapi.drawLine(unit.getX(), unit.getY(), enemyUnit.getX(), enemyUnit.getY(), 2, false);
+		if(bwapi.getFrameCount() % 2 == 0) {
+			for (Unit unit : groupedUnits1) {
+//				bwapi.drawCircle(unit.getX(), unit.getY(), 10, BWColor.CYAN, true, false);
+				individual.setVariable("nearestEnemyDistance", this.getDistanceToUnit(unit, this.getClosestEnemyUnitBySpawn(unit, 0)));
+				individual.setVariable("selfHealth", unit.getHitPoints());
+				individual.setVariable("targetHealth", targetUnit.getHitPoints());
+				individual.evaluate();
+				int actionToTake = (int)individual.getVariable("actionToTake").getValue();
+				this.takeAction(unit, actionToTake, 0);
+				bwapi.drawText(unit.getX(), unit.getY(), Integer.toString(actionToTake), false);
 			}
-//			bwapi.drawCircle(unit.getX(), unit.getY(), 10, 1, true, false);
 		}
-//			double distanceToEnemy;
-//			double distanceToTarget = getDistanceToTarget(unit);
-//			double distanceToSpawn1 = getDistanceToSpawn(unit, 1);
-//			double distanceToSpawn2 = getDistanceToSpawn(unit, 2);
-//			
-//			if(!unit.isAttacking() && !unit.isMoving()) {
-//				Unit closestToTarget = getClosestEnemyToTarget();
-//				
-//				if(getDistanceToTarget(closestToTarget) <distanceToTarget) {
-//					orderAttack(unit, targetUnit);
-//				} else if(distanceToTarget > distanceToSpawn1) {
-//					bwapi.attack(unit.getID(), targetUnit.getX(), targetUnit.getY());
-//				} else if (distanceToTarget > distanceToSpawn2) {
-//					bwapi.attack(unit.getID(), targetUnit.getX(), targetUnit.getY());
-//				} else {
-//					Unit closestEnemy = getClosestEnemy(unit);
-//					bwapi.attack(unit.getID(), closestEnemy.getX(), closestEnemy.getY());
-//				}
-//
-//			}
-//		}		
+		
+		if(bwapi.getFrameCount() % 2 == 1) {
+			for (Unit unit : groupedUnits2) {
+//				bwapi.drawCircle(unit.getX(), unit.getY(), 10, BWColor.BLUE, true, false);
+				individual.setVariable("nearestEnemyDistance", this.getDistanceToUnit(unit, this.getClosestEnemyUnitBySpawn(unit, 1)));
+				individual.setVariable("selfHealth", unit.getHitPoints());
+				individual.setVariable("targetHealth", targetUnit.getHitPoints());
+				individual.evaluate();
+				int actionToTake = (int)individual.getVariable("actionToTake").getValue();
+				this.takeAction(unit, actionToTake, 1);
+				bwapi.drawText(unit.getX(), unit.getY(), Integer.toString(actionToTake), false);
+			}
+		}
+		
+		for (Unit unit : groupedUnits1) {
+//			bwapi.drawCircle(unit.getX(), unit.getY(), 10, BWColor.CYAN, true, false);
+		}
+		for (Unit unit : groupedUnits2) {
+//			bwapi.drawCircle(unit.getX(), unit.getY(), 10, BWColor.BLUE, true, false);
+		}
 	}
 
 	public void gameEnded() {}

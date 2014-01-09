@@ -56,6 +56,7 @@ public class ScEvoBot implements BWAPIEventListener {
 	
 	public static void main(String[] args) {
 		ScEvoBot bot = new ScEvoBot();
+		bot.setParameters(bot.parseParametersFromString(args[0]));
 		bot.start();
 	}
 	
@@ -70,16 +71,7 @@ public class ScEvoBot implements BWAPIEventListener {
 	}
 	
 	public void start() {
-		try {
-			this.loadParameters();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		parameterToString();
-		// load evolution
-		
-		
+		parameterToString();		
 		bwapi = new JNIBWAPI(this);
 		bwapi.start();
 	}
@@ -90,7 +82,7 @@ public class ScEvoBot implements BWAPIEventListener {
 			out += Integer.toString(i) + ",";
 		}
 		out = out.substring(0, out.length()-1);
-		System.out.println("F" + out.toString());
+		System.out.println(out.toString());
 		return out.toString();
 	}
 
@@ -102,17 +94,17 @@ public class ScEvoBot implements BWAPIEventListener {
 		return p;
 	}
 	
-	private void loadParameters() throws IOException {
-		String parametersString = readFile("parameters.txt", Charset.defaultCharset());
-		this.parameters = this.parseParametersFromString(parametersString);
-	}
+//	private void loadParameters() throws IOException {
+//		String parametersString = readFile("parameters.txt", Charset.defaultCharset());
+//		this.parameters = this.parseParametersFromString(parametersString);
+//	}
 	
-	public void saveEvolutionData() throws IOException {
-		PrintWriter out = new PrintWriter("fitness.txt");
-		out.println(parameterToString());
-		out.print("\n" + fitness);
-		out.close();
-	}
+//	public void saveEvolutionData() throws IOException {
+//		PrintWriter out = new PrintWriter("fitness.txt");
+//		out.println(parameterToString());
+//		out.print("\n" + fitness);
+//		out.close();
+//	}
 	
 	private InputStream loadFuzzy(String filename, int part) {
         String fName = "fuzzy/" + filename;
@@ -487,13 +479,7 @@ public class ScEvoBot implements BWAPIEventListener {
 	}
 
 	public void gameEnded() {
-		try {
-			this.saveEvolutionData();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		
+		System.exit(this.fitness);
 	}
 	
 	public void keyPressed(int keyCode) {
